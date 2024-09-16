@@ -209,6 +209,7 @@ func runInDaemonMode(ctx context.Context, cmd *cobra.Command) error {
 		return err
 	}
 
+	mtu := int32(wgIfaceMtu)
 	loginRequest := proto.LoginRequest{
 		SetupKey:             providedSetupKey,
 		ManagementUrl:        managementURL,
@@ -219,7 +220,7 @@ func runInDaemonMode(ctx context.Context, cmd *cobra.Command) error {
 		IsLinuxDesktopClient: isLinuxRunningDesktop(),
 		Hostname:             hostName,
 		ExtraIFaceBlacklist:  extraIFaceBlackList,
-		WgIfaceMtu:           int32(wgIfaceMtu),
+		WgIfaceMtu:           &mtu,
 	}
 
 	if rootCmd.PersistentFlags().Changed(preSharedKeyFlag) {

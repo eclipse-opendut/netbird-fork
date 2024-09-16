@@ -371,10 +371,10 @@ func (s *Server) Login(callerCtx context.Context, msg *proto.LoginRequest) (*pro
 		s.latestConfigInput.DNSRouteInterval = &duration
 	}
 
-	if int(msg.WgIfaceMtu) != 0 {
-		log.Infof("Provided new MTU %d (%d)", msg.WgIfaceMtu, int(msg.WgIfaceMtu))
-		inputConfig.WgIfaceMtu = int(msg.WgIfaceMtu)
-		s.latestConfigInput.WgIfaceMtu = int(msg.WgIfaceMtu)
+	if int(*msg.WgIfaceMtu) != 0 {
+		log.Infof("Provided new MTU %d (%d)", msg.WgIfaceMtu, int(*msg.WgIfaceMtu))
+		inputConfig.WgIfaceMtu = int(*msg.WgIfaceMtu)
+		s.latestConfigInput.WgIfaceMtu = int(*msg.WgIfaceMtu)
 	}
 
 	s.mutex.Unlock()

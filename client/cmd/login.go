@@ -90,12 +90,13 @@ var loginCmd = &cobra.Command{
 
 		client := proto.NewDaemonServiceClient(conn)
 
+		mtu := int32(wgIfaceMtu)
 		loginRequest := proto.LoginRequest{
 			SetupKey:             providedSetupKey,
 			ManagementUrl:        managementURL,
 			IsLinuxDesktopClient: isLinuxRunningDesktop(),
 			Hostname:             hostName,
-			WgIfaceMtu:           int32(wgIfaceMtu),
+			WgIfaceMtu:           &mtu,
 		}
 
 		if wgIfaceMtu != 0 && wgIfaceMtu != iface.DefaultMTU {

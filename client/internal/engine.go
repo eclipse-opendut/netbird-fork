@@ -298,7 +298,6 @@ func (e *Engine) Start() error {
 	}
 	e.ctx, e.cancel = context.WithCancel(e.clientCtx)
 
-	// TODO: wgIFaceMtu := e.config.WgIfaceMtu
 	wgIface, err := e.newWgIface()
 	if err != nil {
 		log.Errorf("failed creating wireguard interface instance %s: [%s]", e.config.WgIfaceName, err)
@@ -1307,7 +1306,7 @@ func (e *Engine) newWgIface() (*iface.WGIface, error) {
 	default:
 	}
 
-	return iface.NewWGIFace(e.config.WgIfaceName, e.config.WgAddr, e.config.WgPort, e.config.WgPrivateKey.String(), iface.DefaultMTU, transportNet, mArgs, e.addrViaRoutes)
+	return iface.NewWGIFace(e.config.WgIfaceName, e.config.WgAddr, e.config.WgPort, e.config.WgPrivateKey.String(), e.config.WgIfaceMtu, transportNet, mArgs, e.addrViaRoutes)
 }
 
 func (e *Engine) wgInterfaceCreate() (err error) {
