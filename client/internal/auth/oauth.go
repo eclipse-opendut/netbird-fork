@@ -99,7 +99,7 @@ func authenticateWithPKCEFlow(ctx context.Context, config *profilemanager.Config
 
 // authenticateWithDeviceCodeFlow initializes the Device Code auth Flow
 func authenticateWithDeviceCodeFlow(ctx context.Context, config *profilemanager.Config, hint string) (OAuthFlow, error) {
-	deviceFlowInfo, err := internal.GetDeviceAuthorizationFlowInfo(ctx, config.PrivateKey, config.ManagementURL)
+	deviceFlowInfo, err := internal.GetDeviceAuthorizationFlowInfo(ctx, config.PrivateKey, config.ManagementURL, config.ClientCertKeyPair)
 	if err != nil {
 		switch s, ok := gstatus.FromError(err); {
 		case ok && s.Code() == codes.NotFound:

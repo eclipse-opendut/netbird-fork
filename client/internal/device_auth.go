@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/url"
 
@@ -43,7 +44,7 @@ type DeviceAuthProviderConfig struct {
 }
 
 // GetDeviceAuthorizationFlowInfo initialize a DeviceAuthorizationFlow instance and return with it
-func GetDeviceAuthorizationFlowInfo(ctx context.Context, privateKey string, mgmURL *url.URL) (DeviceAuthorizationFlow, error) {
+func GetDeviceAuthorizationFlowInfo(ctx context.Context, privateKey string, mgmURL *url.URL, clientCert *tls.Certificate) (DeviceAuthorizationFlow, error) {
 	// validate our peer's Wireguard PRIVATE key
 	myPrivateKey, err := wgtypes.ParseKey(privateKey)
 	if err != nil {
@@ -57,7 +58,7 @@ func GetDeviceAuthorizationFlowInfo(ctx context.Context, privateKey string, mgmU
 	}
 
 	log.Debugf("connecting to Management Service %s", mgmURL.String())
-	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled)
+	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled, clientCert)
 	if err != nil {
 		log.Errorf("failed connecting to Management Service %s %v", mgmURL.String(), err)
 		return DeviceAuthorizationFlow{}, err

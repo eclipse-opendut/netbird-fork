@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"crypto/tls"
 	"net/url"
 
 	"github.com/google/uuid"
@@ -20,7 +21,7 @@ import (
 // IsLoginRequired check that the server is support SSO or not
 func IsLoginRequired(ctx context.Context, config *profilemanager.Config) (bool, error) {
 	mgmURL := config.ManagementURL
-	mgmClient, err := getMgmClient(ctx, config.PrivateKey, mgmURL)
+	mgmClient, err := getMgmClient(ctx, config.PrivateKey, mgmURL, config.ClientCertKeyPair)
 	if err != nil {
 		return false, err
 	}
@@ -49,7 +50,7 @@ func IsLoginRequired(ctx context.Context, config *profilemanager.Config) (bool, 
 
 // Login or register the client
 func Login(ctx context.Context, config *profilemanager.Config, setupKey string, jwtToken string) error {
-	mgmClient, err := getMgmClient(ctx, config.PrivateKey, config.ManagementURL)
+	mgmClient, err := getMgmClient(ctx, config.PrivateKey, config.ManagementURL, config.ClientCertKeyPair)
 	if err != nil {
 		return err
 	}
@@ -83,7 +84,7 @@ func Login(ctx context.Context, config *profilemanager.Config, setupKey string, 
 	return nil
 }
 
-func getMgmClient(ctx context.Context, privateKey string, mgmURL *url.URL) (*mgm.GrpcClient, error) {
+func getMgmClient(ctx context.Context, privateKey string, mgmURL *url.URL, clientCert *tls.Certificate) (*mgm.GrpcClient, error) {
 	// validate our peer's Wireguard PRIVATE key
 	myPrivateKey, err := wgtypes.ParseKey(privateKey)
 	if err != nil {
@@ -97,7 +98,7 @@ func getMgmClient(ctx context.Context, privateKey string, mgmURL *url.URL) (*mgm
 	}
 
 	log.Debugf("connecting to the Management service %s", mgmURL.String())
-	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTlsEnabled)
+	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTlsEnabled, clientCert)
 	if err != nil {
 		log.Errorf("failed connecting to the Management service %s %v", mgmURL.String(), err)
 		return nil, err

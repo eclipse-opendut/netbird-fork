@@ -73,7 +73,7 @@ func NewAuthWithConfig(ctx context.Context, config *profilemanager.Config) *Auth
 func (a *Auth) SaveConfigIfSSOSupported() (bool, error) {
 	supportsSSO := true
 	err := a.withBackOff(a.ctx, func() (err error) {
-		_, err = internal.GetDeviceAuthorizationFlowInfo(a.ctx, a.config.PrivateKey, a.config.ManagementURL)
+		_, err = internal.GetDeviceAuthorizationFlowInfo(a.ctx, a.config.PrivateKey, a.config.ManagementURL, a.config.ClientCertKeyPair)
 		if s, ok := gstatus.FromError(err); ok && (s.Code() == codes.NotFound || s.Code() == codes.Unimplemented) {
 			_, err = internal.GetPKCEAuthorizationFlowInfo(a.ctx, a.config.PrivateKey, a.config.ManagementURL, nil)
 			if s, ok := gstatus.FromError(err); ok && (s.Code() == codes.NotFound || s.Code() == codes.Unimplemented) {

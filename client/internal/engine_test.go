@@ -1503,11 +1503,11 @@ func createEngine(ctx context.Context, cancel context.CancelFunc, setupKey strin
 	if err != nil {
 		return nil, err
 	}
-	mgmtClient, err := mgmt.NewClient(ctx, mgmtAddr, key, false)
+	mgmtClient, err := mgmt.NewClient(ctx, mgmtAddr, key, false, nil)
 	if err != nil {
 		return nil, err
 	}
-	signalClient, err := signal.NewClient(ctx, signalAddr, key, false)
+	signalClient, err := signal.NewClient(ctx, signalAddr, key, false, nil)
 	if err != nil {
 		return nil, err
 	}

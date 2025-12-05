@@ -63,7 +63,7 @@ func GetPKCEAuthorizationFlowInfo(ctx context.Context, privateKey string, mgmURL
 	}
 
 	log.Debugf("connecting to Management Service %s", mgmURL.String())
-	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled)
+	mgmClient, err := mgm.NewClient(ctx, mgmURL.Host, myPrivateKey, mgmTLSEnabled, clientCert)
 	if err != nil {
 		log.Errorf("failed connecting to Management Service %s %v", mgmURL.String(), err)
 		return PKCEAuthorizationFlow{}, err

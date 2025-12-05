@@ -66,8 +66,10 @@ type ConfigInput struct {
 	DisableAutoConnect            *bool
 	ExtraIFaceBlackList           []string
 	DNSRouteInterval              *time.Duration
-	ClientCertPath                string
-	ClientCertKeyPath             string
+	// these client certificates are use for OAuth PKCE Authorization Flow
+	ClientCertPath    string
+	ClientCertKeyPath string
+	// TODO: add mTLS client certificates here for connection to management/signal backend
 
 	DisableClientRoutes *bool
 	DisableServerRoutes *bool
@@ -151,6 +153,8 @@ type Config struct {
 
 	// Path to corresponding private key of ClientCertPath
 	ClientCertKeyPath string
+
+	// mTLS for backend communication
 
 	ClientCertKeyPair *tls.Certificate `json:"-"`
 
@@ -730,7 +734,7 @@ func UpdateOldManagementURL(ctx context.Context, config *Config, configPath stri
 		return config, err
 	}
 
-	client, err := mgm.NewClient(ctx, newURL.Host, key, mgmTlsEnabled)
+	client, err := mgm.NewClient(ctx, newURL.Host, key, mgmTlsEnabled, config.ClientCertKeyPair)
 	if err != nil {
 		log.Infof("couldn't switch to the new Management %s", newURL.String())
 		return config, err
