@@ -264,7 +264,7 @@ func TestEngine_UpdateNetworkMap(t *testing.T) {
 	ctx, cancel := context.WithCancel(CtxInitState(context.Background()))
 	defer cancel()
 
-	relayMgr := relayClient.NewManager(ctx, nil, key.PublicKey().String(), iface.DefaultMTU)
+	relayMgr := relayClient.NewManager(ctx, nil, key.PublicKey().String(), iface.DefaultMTU, nil)
 	engine := NewEngine(ctx, cancel, &EngineConfig{
 		WgIfaceName:  "utun102",
 		WgAddr:       wgaddr.MustParseWGAddress("100.64.0.1/24"),
@@ -567,7 +567,7 @@ func TestEngine_UpdateNetworkMapWithRoutes(t *testing.T) {
 			wgIfaceName := fmt.Sprintf("utun%d", 104+n)
 			wgAddr := fmt.Sprintf("100.66.%d.1/24", n)
 
-			relayMgr := relayClient.NewManager(ctx, nil, key.PublicKey().String(), iface.DefaultMTU)
+			relayMgr := relayClient.NewManager(ctx, nil, key.PublicKey().String(), iface.DefaultMTU, nil)
 			engine := NewEngine(ctx, cancel, &EngineConfig{
 				WgIfaceName:  wgIfaceName,
 				WgAddr:       wgaddr.MustParseWGAddress(wgAddr),
@@ -774,7 +774,7 @@ func TestEngine_UpdateNetworkMapWithDNSUpdate(t *testing.T) {
 			wgIfaceName := fmt.Sprintf("utun%d", 104+n)
 			wgAddr := fmt.Sprintf("100.66.%d.1/24", n)
 
-			relayMgr := relayClient.NewManager(ctx, nil, key.PublicKey().String(), iface.DefaultMTU)
+			relayMgr := relayClient.NewManager(ctx, nil, key.PublicKey().String(), iface.DefaultMTU, nil)
 			engine := NewEngine(ctx, cancel, &EngineConfig{
 				WgIfaceName:  wgIfaceName,
 				WgAddr:       wgaddr.MustParseWGAddress(wgAddr),

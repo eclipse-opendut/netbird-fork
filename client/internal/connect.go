@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -285,7 +286,7 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		}()
 
 		log.Debugf("connecting to the Management service %s", c.config.ManagementURL.Host)
-		mgmClient, err := mgm.NewClient(engineCtx, c.config.ManagementURL.Host, myPrivateKey, mgmTlsEnabled)
+		mgmClient, err := mgm.NewClient(engineCtx, c.config.ManagementURL.Host, myPrivateKey, mgmTlsEnabled, c.config.MgmtClientCertKeyPair)
 		if err != nil {
 			// On daemon shutdown / Down() the parent context is cancelled
 			// and the dial fails with "context canceled". Wrapping that
@@ -360,7 +361,7 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 		}()
 
 		// with the global Netbird config in hand connect (just a connection, no stream yet) Signal
-		signalClient, err := connectToSignal(engineCtx, loginResp.GetNetbirdConfig(), myPrivateKey)
+		signalClient, err := connectToSignal(engineCtx, loginResp.GetNetbirdConfig(), myPrivateKey, c.config.MgmtClientCertKeyPair)
 		if err != nil {
 			log.Error(err)
 			return wrapErr(err)
@@ -396,7 +397,7 @@ func (c *ConnectClient) run(mobileDependency MobileDependency, runningChan chan 
 			engineConfig.StateDir = filepath.Dir(path)
 		}
 
-		relayManager := relayClient.NewManager(engineCtx, relayURLs, myPrivateKey.PublicKey().String(), engineConfig.MTU)
+		relayManager := relayClient.NewManager(engineCtx, relayURLs, myPrivateKey.PublicKey().String(), engineConfig.MTU, c.config.MgmtClientCertKeyPair)
 		c.statusRecorder.SetRelayMgr(relayManager)
 		if len(relayURLs) > 0 {
 			if token != nil {
@@ -673,7 +674,7 @@ func selectMTU(localMTU uint16, peerMTU int32) uint16 {
 }
 
 // connectToSignal creates Signal Service client and established a connection
-func connectToSignal(ctx context.Context, wtConfig *mgmProto.NetbirdConfig, ourPrivateKey wgtypes.Key) (*signal.GrpcClient, error) {
+func connectToSignal(ctx context.Context, wtConfig *mgmProto.NetbirdConfig, ourPrivateKey wgtypes.Key, mgmtClientCert *tls.Certificate) (*signal.GrpcClient, error) {
 	var sigTLSEnabled bool
 	if wtConfig.Signal.Protocol == mgmProto.HostConfig_HTTPS {
 		sigTLSEnabled = true
@@ -681,7 +682,7 @@ func connectToSignal(ctx context.Context, wtConfig *mgmProto.NetbirdConfig, ourP
 		sigTLSEnabled = false
 	}
 
-	signalClient, err := signal.NewClient(ctx, wtConfig.Signal.Uri, ourPrivateKey, sigTLSEnabled)
+	signalClient, err := signal.NewClient(ctx, wtConfig.Signal.Uri, ourPrivateKey, sigTLSEnabled, mgmtClientCert)
 	if err != nil {
 		log.Errorf("error while connecting to the Signal Exchange Service %s: %s", wtConfig.Signal.Uri, err)
 		return nil, gstatus.Errorf(codes.FailedPrecondition, "failed connecting to Signal Service : %s", err)

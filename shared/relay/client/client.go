@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/netip"
@@ -179,6 +180,7 @@ type Client struct {
 	stateSubscription *PeersStateSubscription
 
 	mtu uint16
+	clientCert *tls.Certificate
 
 	// transportFallback, when set, records datagram-too-large failures so a
 	// datagram-sized transport is avoided on subsequent connects. Shared via
@@ -206,18 +208,22 @@ func (c *Client) SetTransportFallback(tf *transportFallback) {
 	c.transportFallback = tf
 }
 
-// NewClient creates a new client for the relay server. The client is not connected to the server until the Connect
+// NewClient creates a new client for the relay server. The client is not connected to the server until Connect
 // is called.
-func NewClient(serverURL string, authTokenStore *auth.TokenStore, peerID string, mtu uint16) *Client {
-	return NewClientWithServerIP(serverURL, netip.Addr{}, authTokenStore, peerID, mtu)
+func NewClient(serverURL string, authTokenStore *auth.TokenStore, peerID string, mtu uint16, clientCert ...*tls.Certificate) *Client {
+	return NewClientWithServerIP(serverURL, netip.Addr{}, authTokenStore, peerID, mtu, clientCert...)
 }
 
 // NewClientWithServerIP creates a new client for the relay server with a known server IP. serverIP, when valid, is
 // dialed directly first; the FQDN is only attempted if the IP-based dial fails. TLS verification still uses the
 // FQDN from serverURL via SNI.
-func NewClientWithServerIP(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16) *Client {
+func NewClientWithServerIP(serverURL string, serverIP netip.Addr, authTokenStore *auth.TokenStore, peerID string, mtu uint16, clientCert ...*tls.Certificate) *Client {
 	hashedID := messages.HashID(peerID)
 	relayLog := log.WithFields(log.Fields{"relay": serverURL})
+	var cert *tls.Certificate
+	if len(clientCert) > 0 {
+		cert = clientCert[0]
+	}
 
 	c := &Client{
 		log:            relayLog,
@@ -226,6 +232,7 @@ func NewClientWithServerIP(serverURL string, serverIP netip.Addr, authTokenStore
 		authTokenStore: authTokenStore,
 		hashedID:       hashedID,
 		mtu:            mtu,
+		clientCert:     cert,
 		bufPool: &sync.Pool{
 			New: func() any {
 				buf := make([]byte, bufferSize)

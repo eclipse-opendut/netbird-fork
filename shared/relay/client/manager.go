@@ -3,6 +3,7 @@ package client
 import (
 	"container/list"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/netip"
@@ -91,6 +92,7 @@ type Manager struct {
 	listenerLock            sync.Mutex
 
 	mtu                uint16
+	clientCert         *tls.Certificate
 	maxBackoffInterval time.Duration
 
 	cleanupInterval      time.Duration
@@ -113,11 +115,17 @@ func NewManager(ctx context.Context, serverURLs []string, peerID string, mtu uin
 		tokenStore:        tokenStore,
 		mtu:               mtu,
 		transportFallback: tf,
+		ctx:               ctx,
+		peerID:            peerID,
+		tokenStore:        tokenStore,
+		mtu:               mtu,
+		transportFallback: tf,
 		serverPicker: &ServerPicker{
 			TokenStore:        tokenStore,
 			PeerID:            peerID,
 			MTU:               mtu,
 			ConnectionTimeout: defaultConnectionTimeout,
+			TransportFallback: tf,
 			TransportFallback: tf,
 		},
 		relayClients:            make(map[string]*RelayTrack),
@@ -128,9 +136,15 @@ func NewManager(ctx context.Context, serverURLs []string, peerID string, mtu uin
 	for _, opt := range opts {
 		opt(m)
 	}
+	m.serverPicker.ClientCert = m.clientCert
 	m.serverPicker.ServerURLs.Store(serverURLs)
 	m.reconnectGuard = NewGuard(m.serverPicker, m.maxBackoffInterval)
 	return m
+}
+
+// WithClientCert sets the optional client certificate for mTLS relay connections.
+func WithClientCert(cert *tls.Certificate) ManagerOption {
+	return func(m *Manager) { m.clientCert = cert }
 }
 
 // Serve starts the manager, attempting to establish a connection with the relay server.
@@ -352,7 +366,7 @@ func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string
 	m.relayClients[serverAddress] = rt
 	m.relayClientsMutex.Unlock()
 
-	relayClient := NewClientWithServerIP(serverAddress, serverIP, m.tokenStore, m.peerID, m.mtu)
+	relayClient := NewClientWithServerIP(serverAddress, serverIP, m.tokenStore, m.peerID, m.mtu, m.clientCert)
 	relayClient.SetTransportFallback(m.transportFallback)
 	err := relayClient.Connect(m.ctx)
 	if err != nil {

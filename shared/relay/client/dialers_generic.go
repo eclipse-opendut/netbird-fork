@@ -13,6 +13,11 @@ import (
 // applies the datagram fallback generically: if this server recently rejected a
 // datagram-sized transport, those dialers are dropped, leaving the rest.
 func (c *Client) getDialers(mode TransportMode) []dialer.DialeFn {
+	if c.clientCert != nil {
+		c.log.Infof("using client certificate requires WebSocket transport")
+		return []dialer.DialeFn{ws.Dialer{ClientCert: c.clientCert}}
+	}
+
 	dialers := c.baseDialers(mode)
 
 	if c.transportFallback != nil && c.transportFallback.avoidDatagramSized(c.connectionURL) {
@@ -31,15 +36,15 @@ func (c *Client) baseDialers(mode TransportMode) []dialer.DialeFn {
 	switch mode {
 	case TransportModeWS:
 		c.log.Infof("%s=ws, using WebSocket transport", EnvRelayTransport)
-		return []dialer.DialeFn{ws.Dialer{}}
+		return []dialer.DialeFn{ws.Dialer{ClientCert: c.clientCert}}
 	case TransportModeQUIC:
 		c.log.Infof("%s=quic, using QUIC transport", EnvRelayTransport)
 		return []dialer.DialeFn{quic.Dialer{}}
 	}
 
-	all := []dialer.DialeFn{quic.Dialer{}, ws.Dialer{}}
+	all := []dialer.DialeFn{quic.Dialer{}, ws.Dialer{ClientCert: c.clientCert}}
 	if mode == TransportModePreferWS {
-		all = []dialer.DialeFn{ws.Dialer{}, quic.Dialer{}}
+		all = []dialer.DialeFn{ws.Dialer{ClientCert: c.clientCert}, quic.Dialer{}}
 	}
 
 	if c.mtu > 0 && c.mtu > iface.DefaultMTU {

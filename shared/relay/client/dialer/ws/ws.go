@@ -19,6 +19,8 @@ import (
 )
 
 type Dialer struct {
+	// ClientCert is an optional client certificate for mTLS authentication
+	ClientCert *tls.Certificate
 }
 
 func (d Dialer) Protocol() string {
@@ -32,7 +34,7 @@ func (d Dialer) Dial(ctx context.Context, address, serverName string) (net.Conn,
 	}
 
 	var underlying net.Conn
-	opts := createDialOptions(serverName, &underlying)
+	opts := createDialOptions(serverName, &underlying, d.ClientCert)
 
 	wsConn, resp, err := websocket.Dial(ctx, wsURL, opts)
 	if err != nil {
@@ -81,7 +83,7 @@ func prepareURL(address string) (string, error) {
 // httpClientNbDialer builds the http client used by the websocket library.
 // underlyingOut, when non-nil, is populated with the raw conn from the
 // transport's DialContext so the caller can read its RemoteAddr.
-func httpClientNbDialer(serverName string, underlyingOut *net.Conn) *http.Client {
+func httpClientNbDialer(serverName string, underlyingOut *net.Conn, clientCert *tls.Certificate) *http.Client {
 	customDialer := nbnet.NewDialer()
 
 	certPool, err := x509.SystemCertPool()
@@ -102,6 +104,10 @@ func httpClientNbDialer(serverName string, underlyingOut *net.Conn) *http.Client
 			RootCAs:    certPool,
 			ServerName: serverName,
 		},
+	}
+	if clientCert != nil {
+		customTransport.TLSClientConfig.Certificates = []tls.Certificate{*clientCert}
+		log.Debugf("using client certificate for relay mTLS")
 	}
 
 	return &http.Client{
