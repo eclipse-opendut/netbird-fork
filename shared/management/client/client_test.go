@@ -198,7 +198,7 @@ func TestClient_HealthCheck(t *testing.T) {
 	s, listener := startManagement(t)
 	defer closeManagementSilently(s, listener)
 
-	client, err := NewClient(ctx, listener.Addr().String(), testKey, false)
+	client, err := NewClient(ctx, listener.Addr().String(), testKey, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestClient_LoginUnregistered_ShouldThrow_401(t *testing.T) {
 	s, listener := startManagement(t)
 	defer closeManagementSilently(s, listener)
 
-	client, err := NewClient(ctx, listener.Addr().String(), testKey, false)
+	client, err := NewClient(ctx, listener.Addr().String(), testKey, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestClient_LoginRegistered(t *testing.T) {
 	s, listener := startManagement(t)
 	defer closeManagementSilently(s, listener)
 
-	client, err := NewClient(ctx, listener.Addr().String(), testKey, false)
+	client, err := NewClient(ctx, listener.Addr().String(), testKey, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +265,7 @@ func TestClient_Sync(t *testing.T) {
 	s, listener := startManagement(t)
 	defer closeManagementSilently(s, listener)
 
-	client, err := NewClient(ctx, listener.Addr().String(), testKey, false)
+	client, err := NewClient(ctx, listener.Addr().String(), testKey, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestClient_Sync(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	remoteClient, err := NewClient(context.TODO(), listener.Addr().String(), remoteKey, false)
+	remoteClient, err := NewClient(context.TODO(), listener.Addr().String(), remoteKey, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func Test_SystemMetaDataFromClient(t *testing.T) {
 	serverAddr := lis.Addr().String()
 	ctx := context.Background()
 
-	testClient, err := NewClient(ctx, serverAddr, testKey, false)
+	testClient, err := NewClient(ctx, serverAddr, testKey, false, nil)
 	if err != nil {
 		t.Fatalf("error while creating testClient: %v", err)
 	}
@@ -472,7 +472,7 @@ func Test_GetDeviceAuthorizationFlow(t *testing.T) {
 	serverAddr := lis.Addr().String()
 	ctx := context.Background()
 
-	client, err := NewClient(ctx, serverAddr, testKey, false)
+	client, err := NewClient(ctx, serverAddr, testKey, false, nil)
 	if err != nil {
 		t.Fatalf("error while creating testClient: %v", err)
 	}
@@ -516,7 +516,7 @@ func Test_GetPKCEAuthorizationFlow(t *testing.T) {
 	serverAddr := lis.Addr().String()
 	ctx := context.Background()
 
-	client, err := NewClient(ctx, serverAddr, testKey, false)
+	client, err := NewClient(ctx, serverAddr, testKey, false, nil)
 	if err != nil {
 		t.Fatalf("error while creating testClient: %v", err)
 	}
