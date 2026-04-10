@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -69,6 +70,7 @@ type GrpcClient struct {
 	// netMgr gates the Receive retry loop on OS-reported network
 	// availability and sweeps the transport on network change.
 	netMgr *netevents.Manager
+	clientCert *tls.Certificate
 
 	onReconnectedListenerFn func()
 
@@ -101,6 +103,11 @@ func WithNetEvents(events *netevents.Manager) Option {
 	return func(c *GrpcClient) { c.netMgr = events }
 }
 
+// WithClientCert injects the optional client certificate for mTLS.
+func WithClientCert(clientCert *tls.Certificate) Option {
+	return func(c *GrpcClient) { c.clientCert = clientCert }
+}
+
 // NewClient creates a new Signal client
 func NewClient(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled bool, opts ...Option) (*GrpcClient, error) {
 	// Options apply before dialing: the sweeper must wrap the first connection too.
@@ -123,7 +130,7 @@ func NewClient(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled boo
 	var conn *grpc.ClientConn
 	operation := func() error {
 		var err error
-		conn, err = nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.SignalComponent, extraOpts...)
+		conn, err = nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.SignalComponent, c.clientCert, extraOpts...)
 		if err != nil {
 			return fmt.Errorf("create connection: %w", err)
 		}

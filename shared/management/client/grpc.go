@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -62,6 +63,7 @@ type GrpcClient struct {
 	connStateCallback     ConnStateNotifier
 	connStateCallbackLock sync.RWMutex
 	serverURL             string
+	clientCert            *tls.Certificate
 
 	// netMgr gates the stream retry loop on OS-reported network
 	// availability and sweeps the transport on network change.
@@ -124,6 +126,11 @@ func WithNetEvents(events *netevents.Manager) Option {
 	return func(c *GrpcClient) { c.netMgr = events }
 }
 
+// WithClientCert injects the optional client certificate for mTLS.
+func WithClientCert(clientCert *tls.Certificate) Option {
+	return func(c *GrpcClient) { c.clientCert = clientCert }
+}
+
 // NewClient creates a new client to Management service
 func NewClient(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, tlsEnabled bool, opts ...Option) (*GrpcClient, error) {
 	// Options apply before dialing: the sweeper must wrap the first connection too.
@@ -149,7 +156,7 @@ func NewClient(ctx context.Context, addr string, ourPrivateKey wgtypes.Key, tlsE
 	var conn *grpc.ClientConn
 	operation := func() error {
 		var err error
-		conn, err = nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.ManagementComponent, extraOpts...)
+		conn, err = nbgrpc.CreateConnection(ctx, addr, tlsEnabled, wsproxy.ManagementComponent, c.clientCert, extraOpts...)
 		if err != nil {
 			return fmt.Errorf("create connection: %w", err)
 		}

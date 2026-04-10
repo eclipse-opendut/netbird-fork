@@ -3,6 +3,7 @@ package client
 import (
 	"container/list"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/netip"
@@ -70,6 +71,11 @@ func WithNetEvents(events NetEvents) ManagerOption {
 	return func(m *Manager) { m.netEvents = events }
 }
 
+// WithClientCert injects the optional client certificate for relay mTLS.
+func WithClientCert(clientCert *tls.Certificate) ManagerOption {
+	return func(m *Manager) { m.clientCert = clientCert }
+}
+
 // Manager is a manager for the relay client instances. It establishes one persistent connection to the given relay URL
 // and automatically reconnect to them in case disconnection.
 // The manager also manage temporary relay connection. If a client wants to communicate with a client on a
@@ -96,6 +102,7 @@ type Manager struct {
 	listenerLock            sync.Mutex
 
 	mtu                uint16
+	clientCert         *tls.Certificate
 	maxBackoffInterval time.Duration
 	netEvents          NetEvents
 
@@ -134,6 +141,7 @@ func NewManager(ctx context.Context, serverURLs []string, peerID string, mtu uin
 	for _, opt := range opts {
 		opt(m)
 	}
+	m.serverPicker.ClientCert = m.clientCert
 	m.serverPicker.NetEvents = m.netEvents
 	m.serverPicker.ServerURLs.Store(serverURLs)
 	m.reconnectGuard = NewGuard(m.serverPicker, m.maxBackoffInterval, m.netEvents)
@@ -357,6 +365,7 @@ func (m *Manager) openConnVia(ctx context.Context, serverAddress, peerKey string
 
 	relayClient := NewClientWithServerIP(serverAddress, serverIP, m.tokenStore, m.peerID, m.mtu)
 	relayClient.SetTransportFallback(m.transportFallback)
+	relayClient.SetClientCert(m.clientCert)
 	relayClient.netEvents = m.netEvents
 	err := relayClient.Connect(m.ctx)
 	if err != nil {

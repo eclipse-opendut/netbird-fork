@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -188,6 +189,8 @@ type Client struct {
 	stateSubscription *PeersStateSubscription
 
 	mtu uint16
+	// clientCert is the optional client certificate for mTLS on WebSocket relay dials.
+	clientCert *tls.Certificate
 
 	// transportFallback, when set, records datagram-too-large failures so a
 	// datagram-sized transport is avoided on subsequent connects. Shared via
@@ -218,6 +221,11 @@ func (c *Client) Transport() string {
 // SetTransportFallback wires the shared datagram-transport fallback tracker.
 func (c *Client) SetTransportFallback(tf *transportFallback) {
 	c.transportFallback = tf
+}
+
+// SetClientCert sets the optional client certificate for relay connections.
+func (c *Client) SetClientCert(clientCert *tls.Certificate) {
+	c.clientCert = clientCert
 }
 
 // NewClient creates a new client for the relay server. The client is not connected to the server until the Connect

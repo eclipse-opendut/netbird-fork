@@ -3,12 +3,15 @@
 package ws
 
 import (
-	"net"
+	"crypto/tls"
+	"errors"
 
 	"github.com/coder/websocket"
 )
 
-func createDialOptions(_ string, _ *net.Conn) *websocket.DialOptions {
-	// WASM version doesn't support HTTPClient or custom TLS config.
-	return &websocket.DialOptions{}
+func createDialOptions(_ string, _ any, clientCert *tls.Certificate) (*websocket.DialOptions, error) {
+	if clientCert != nil {
+		return nil, errors.New("relay mTLS client certificates are not supported in WASM builds")
+	}
+	return &websocket.DialOptions{}, nil
 }

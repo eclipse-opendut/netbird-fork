@@ -19,6 +19,7 @@ import (
 )
 
 type Dialer struct {
+	ClientCert *tls.Certificate
 }
 
 func (d Dialer) Protocol() string {
@@ -32,7 +33,10 @@ func (d Dialer) Dial(ctx context.Context, address, serverName string) (net.Conn,
 	}
 
 	var underlying net.Conn
-	opts := createDialOptions(serverName, &underlying)
+	opts, err := createDialOptions(serverName, &underlying, d.ClientCert)
+	if err != nil {
+		return nil, err
+	}
 
 	wsConn, resp, err := websocket.Dial(ctx, wsURL, opts)
 	if err != nil {
@@ -81,13 +85,22 @@ func prepareURL(address string) (string, error) {
 // httpClientNbDialer builds the http client used by the websocket library.
 // underlyingOut, when non-nil, is populated with the raw conn from the
 // transport's DialContext so the caller can read its RemoteAddr.
-func httpClientNbDialer(serverName string, underlyingOut *net.Conn) *http.Client {
+func httpClientNbDialer(serverName string, underlyingOut *net.Conn, clientCert *tls.Certificate) *http.Client {
 	customDialer := nbnet.NewDialer()
 
 	certPool, err := x509.SystemCertPool()
 	if err != nil || certPool == nil {
 		log.Debugf("System cert pool not available; falling back to embedded cert, error: %v", err)
 		certPool = embeddedroots.Get()
+	}
+
+	tlsConfig := &tls.Config{
+		RootCAs:    certPool,
+		ServerName: serverName,
+	}
+	if clientCert != nil {
+		tlsConfig.Certificates = []tls.Certificate{*clientCert}
+		log.Debugf("using client certificate for relay WebSocket connection")
 	}
 
 	customTransport := &http.Transport{
@@ -98,10 +111,7 @@ func httpClientNbDialer(serverName string, underlyingOut *net.Conn) *http.Client
 			}
 			return c, err
 		},
-		TLSClientConfig: &tls.Config{
-			RootCAs:    certPool,
-			ServerName: serverName,
-		},
+		TLSClientConfig: tlsConfig,
 	}
 
 	return &http.Client{

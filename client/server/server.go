@@ -1589,7 +1589,7 @@ func (s *Server) sendLogoutRequestWithConfig(ctx context.Context, config *profil
 	}
 
 	mgmTlsEnabled := config.ManagementURL.Scheme == "https"
-	mgmClient, err := mgm.NewClient(ctx, config.ManagementURL.Host, key, mgmTlsEnabled)
+	mgmClient, err := mgm.NewClient(ctx, config.ManagementURL.Host, key, mgmTlsEnabled, mgm.WithClientCert(config.MgmtClientCert.KeyPair))
 	if err != nil {
 		return fmt.Errorf("connect to management server: %w", err)
 	}

@@ -49,13 +49,20 @@ type mgmProber interface {
 
 // newMgmProber creates a management client for probing URL reachability.
 // Overridden in tests to avoid real network calls.
-var newMgmProber = func(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled bool) (mgmProber, error) {
-	return mgm.NewClient(ctx, addr, key, tlsEnabled)
+var newMgmProber = func(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled bool, clientCert *tls.Certificate) (mgmProber, error) {
+	return mgm.NewClient(ctx, addr, key, tlsEnabled, mgm.WithClientCert(clientCert))
 }
 
 var DefaultInterfaceBlacklist = []string{
 	iface.WgInterfaceDefault, "wt", "utun", "tun0", "zt", "ZeroTier", "wg", "ts",
 	"Tailscale", "tailscale", "docker", "veth", "br-", "lo",
+}
+
+// MTLSConfig stores certificate/key paths and the loaded key pair for mTLS.
+type MTLSConfig struct {
+	CertPath string
+	KeyPath  string
+	KeyPair  *tls.Certificate `json:"-"`
 }
 
 // ConfigInput carries configuration changes to the client
@@ -83,8 +90,10 @@ type ConfigInput struct {
 	DisableAutoConnect            *bool
 	ExtraIFaceBlackList           []string
 	DNSRouteInterval              *time.Duration
-	ClientCertPath                string
-	ClientCertKeyPath             string
+	// IDPClientCert holds the mTLS cert/key paths for OAuth PKCE Authorization Flow with the identity provider (SSO).
+	IDPClientCert MTLSConfig
+	// MgmtClientCert holds the mTLS cert/key paths for connecting to management, signal, and relay backends.
+	MgmtClientCert MTLSConfig
 
 	DisableClientRoutes *bool
 	DisableServerRoutes *bool
@@ -178,13 +187,16 @@ type Config struct {
 
 	// DNSRouteInterval is the interval in which the DNS routes are updated
 	DNSRouteInterval time.Duration
-	// Path to a certificate used for mTLS authentication
-	ClientCertPath string
+	// IDPClientCert holds the mTLS cert/key paths for OAuth PKCE Authorization Flow with the identity provider (SSO).
+	IDPClientCert MTLSConfig
 
-	// Path to corresponding private key of ClientCertPath
-	ClientCertKeyPath string
+	// MgmtClientCert holds the mTLS cert/key paths for connecting to management, signal, and relay backends.
+	MgmtClientCert MTLSConfig
 
-	ClientCertKeyPair *tls.Certificate `json:"-"`
+	// Deprecated: use IDPClientCert.CertPath instead. Kept for reading legacy config files.
+	ClientCertPath string `json:",omitempty"`
+	// Deprecated: use IDPClientCert.KeyPath instead. Kept for reading legacy config files.
+	ClientCertKeyPath string `json:",omitempty"`
 
 	// LazyConnection is the MDM-managed lazy-connection override ("on"/"off"/"").
 	// Runtime-only: re-derived from MDM policy on each load, never persisted.
@@ -318,7 +330,56 @@ func createNewConfig(input ConfigInput) (*Config, error) {
 	return config, nil
 }
 
+func (config *Config) migrateLegacyClientCertFields() bool {
+	if config.IDPClientCert.CertPath != "" || config.IDPClientCert.KeyPath != "" {
+		return false
+	}
+	if config.ClientCertPath == "" && config.ClientCertKeyPath == "" {
+		return false
+	}
+
+	config.IDPClientCert.CertPath = config.ClientCertPath
+	config.IDPClientCert.KeyPath = config.ClientCertKeyPath
+	config.ClientCertPath = ""
+	config.ClientCertKeyPath = ""
+	return true
+}
+
+func applyMTLSCertKeyPair(target *MTLSConfig, input MTLSConfig, purpose string) (bool, error) {
+	updated := false
+
+	if input.KeyPath != "" {
+		target.KeyPath = input.KeyPath
+		updated = true
+	}
+	if input.CertPath != "" {
+		target.CertPath = input.CertPath
+		updated = true
+	}
+
+	target.KeyPair = nil
+	if (target.CertPath == "") != (target.KeyPath == "") {
+		return updated, fmt.Errorf("%s mTLS certificate and key paths must be set together", purpose)
+	}
+	if target.CertPath == "" {
+		return updated, nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(target.CertPath, target.KeyPath)
+	if err != nil {
+		return updated, fmt.Errorf("load %s mTLS cert/key pair: %w", purpose, err)
+	}
+
+	target.KeyPair = &cert
+	log.Infof("loaded %s mTLS cert/key pair", purpose)
+	return updated, nil
+}
+
 func (config *Config) apply(input ConfigInput) (updated bool, err error) {
+	if config.migrateLegacyClientCertFields() {
+		updated = true
+	}
+
 	if config.Name != "" {
 		sanitized, err := sanitizeDisplayName(config.Name)
 		if err != nil {
@@ -682,25 +743,17 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		updated = true
 	}
 
-	if input.ClientCertKeyPath != "" {
-		config.ClientCertKeyPath = input.ClientCertKeyPath
-		updated = true
+	idpUpdated, err := applyMTLSCertKeyPair(&config.IDPClientCert, input.IDPClientCert, "IDP")
+	if err != nil {
+		return updated, err
 	}
+	updated = updated || idpUpdated
 
-	if input.ClientCertPath != "" {
-		config.ClientCertPath = input.ClientCertPath
-		updated = true
+	mgmtUpdated, err := applyMTLSCertKeyPair(&config.MgmtClientCert, input.MgmtClientCert, "management")
+	if err != nil {
+		return updated, err
 	}
-
-	if config.ClientCertPath != "" && config.ClientCertKeyPath != "" {
-		cert, err := tls.LoadX509KeyPair(config.ClientCertPath, config.ClientCertKeyPath)
-		if err != nil {
-			log.Error("Failed to load mTLS cert/key pair: ", err)
-		} else {
-			config.ClientCertKeyPair = &cert
-			log.Info("Loaded client mTLS cert/key pair")
-		}
-	}
+	updated = updated || mgmtUpdated
 
 	if input.DNSLabels != nil && !slices.Equal(config.DNSLabels, input.DNSLabels) {
 		log.Infof("updating DNS labels [ %s ] (old value: [ %s ])",
@@ -1043,7 +1096,7 @@ func UpdateOldManagementURL(ctx context.Context, config *Config, configPath stri
 		return config, err
 	}
 
-	client, err := newMgmProber(ctx, newURL.Host, key, mgmTlsEnabled)
+	client, err := newMgmProber(ctx, newURL.Host, key, mgmTlsEnabled, config.MgmtClientCert.KeyPair)
 	if err != nil {
 		log.Infof("couldn't switch to the new Management %s", newURL.String())
 		return config, err

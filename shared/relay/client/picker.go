@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -29,6 +30,7 @@ type ServerPicker struct {
 	PeerID            string
 	MTU               uint16
 	ConnectionTimeout time.Duration
+	ClientCert        *tls.Certificate
 	TransportFallback *transportFallback
 	NetEvents         NetEvents
 }
@@ -79,6 +81,7 @@ func (sp *ServerPicker) startConnection(ctx context.Context, resultChan chan con
 	log.Infof("try to connecting to relay server: %s", url)
 	relayClient := NewClient(url, sp.TokenStore, sp.PeerID, sp.MTU)
 	relayClient.SetTransportFallback(sp.TransportFallback)
+	relayClient.SetClientCert(sp.ClientCert)
 	relayClient.netEvents = sp.NetEvents
 	err := relayClient.Connect(ctx)
 	resultChan <- connResult{
