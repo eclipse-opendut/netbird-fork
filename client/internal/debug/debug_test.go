@@ -844,6 +844,8 @@ func TestAddConfig_AllFieldsCovered(t *testing.T) {
 		"SSHKey":               "sensitive: SSH private key",
 		"IDPClientCert":        "nested config: rendered field-by-field in addCommonConfigFields",
 		"MgmtClientCert":       "nested config: rendered field-by-field in addCommonConfigFields",
+		"ClientCertPath":       "deprecated legacy field migrated into IDPClientCert",
+		"ClientCertKeyPath":    "deprecated legacy field migrated into IDPClientCert",
 		"Name":                 "non-config: profile name is not needed for debug purposes",
 		"policy":               "non-config: in-memory MDM policy snapshot, surfaced via Config.Policy() / GetConfigResponse.MDMManagedFields",
 		"DebugBundleUploadURL": "sensitive: MDM-provided upload URL may carry credentials or query tokens; kept out of the shared bundle",

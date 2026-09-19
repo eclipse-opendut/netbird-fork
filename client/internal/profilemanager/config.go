@@ -58,13 +58,6 @@ var DefaultInterfaceBlacklist = []string{
 	"Tailscale", "tailscale", "docker", "veth", "br-", "lo",
 }
 
-// MTLSConfig stores certificate/key paths and the loaded key pair for mTLS.
-type MTLSConfig struct {
-	CertPath string
-	KeyPath  string
-	KeyPair  *tls.Certificate `json:"-"`
-}
-
 // ConfigInput carries configuration changes to the client
 type ConfigInput struct {
 	ManagementURL                 string
@@ -328,51 +321,6 @@ func createNewConfig(input ConfigInput) (*Config, error) {
 	}
 
 	return config, nil
-}
-
-func (config *Config) migrateLegacyClientCertFields() bool {
-	if config.IDPClientCert.CertPath != "" || config.IDPClientCert.KeyPath != "" {
-		return false
-	}
-	if config.ClientCertPath == "" && config.ClientCertKeyPath == "" {
-		return false
-	}
-
-	config.IDPClientCert.CertPath = config.ClientCertPath
-	config.IDPClientCert.KeyPath = config.ClientCertKeyPath
-	config.ClientCertPath = ""
-	config.ClientCertKeyPath = ""
-	return true
-}
-
-func applyMTLSCertKeyPair(target *MTLSConfig, input MTLSConfig, purpose string) (bool, error) {
-	updated := false
-
-	if input.KeyPath != "" {
-		target.KeyPath = input.KeyPath
-		updated = true
-	}
-	if input.CertPath != "" {
-		target.CertPath = input.CertPath
-		updated = true
-	}
-
-	target.KeyPair = nil
-	if (target.CertPath == "") != (target.KeyPath == "") {
-		return updated, fmt.Errorf("%s mTLS certificate and key paths must be set together", purpose)
-	}
-	if target.CertPath == "" {
-		return updated, nil
-	}
-
-	cert, err := tls.LoadX509KeyPair(target.CertPath, target.KeyPath)
-	if err != nil {
-		return updated, fmt.Errorf("load %s mTLS cert/key pair: %w", purpose, err)
-	}
-
-	target.KeyPair = &cert
-	log.Infof("loaded %s mTLS cert/key pair", purpose)
-	return updated, nil
 }
 
 func (config *Config) apply(input ConfigInput) (updated bool, err error) {
@@ -743,13 +691,13 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		updated = true
 	}
 
-	idpUpdated, err := applyMTLSCertKeyPair(&config.IDPClientCert, input.IDPClientCert, "IDP")
+	idpUpdated, err := applyMTLSCertKeyPair(&config.IDPClientCert, input.IDPClientCert)
 	if err != nil {
 		return updated, err
 	}
 	updated = updated || idpUpdated
 
-	mgmtUpdated, err := applyMTLSCertKeyPair(&config.MgmtClientCert, input.MgmtClientCert, "management")
+	mgmtUpdated, err := applyMTLSCertKeyPair(&config.MgmtClientCert, input.MgmtClientCert)
 	if err != nil {
 		return updated, err
 	}

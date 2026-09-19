@@ -69,7 +69,7 @@ type GrpcClient struct {
 
 	// netMgr gates the Receive retry loop on OS-reported network
 	// availability and sweeps the transport on network change.
-	netMgr *netevents.Manager
+	netMgr     *netevents.Manager
 	clientCert *tls.Certificate
 
 	onReconnectedListenerFn func()
@@ -119,6 +119,9 @@ func NewClient(ctx context.Context, addr string, key wgtypes.Key, tlsEnabled boo
 		connStateCallbackLock: sync.RWMutex{},
 	}
 	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
 		opt(c)
 	}
 
