@@ -15,9 +15,14 @@ type MTLSConfig struct {
 	KeyPair  *tls.Certificate `json:"-"`
 }
 
+// IsZero reports whether the persisted mTLS config has any configured paths.
+func (c MTLSConfig) IsZero() bool {
+	return c.CertPath == "" && c.KeyPath == ""
+}
+
 // migrateLegacyClientCertFields copies the old flat ClientCertPath / ClientCertKeyPath fields
-// into the IDPClientCert sub-struct, logs a warning, and clears the legacy fields so they are
-// not written back to disk on the next save. Returns true if a migration was performed.
+// into the IDPClientCert sub-struct and keeps the legacy fields populated for downgrade safety.
+// Returns true if a migration was performed.
 func (c *Config) migrateLegacyClientCertFields() bool {
 	if c.ClientCertPath == "" && c.ClientCertKeyPath == "" {
 		return false
@@ -29,14 +34,25 @@ func (c *Config) migrateLegacyClientCertFields() bool {
 	if c.IDPClientCert.KeyPath == "" {
 		c.IDPClientCert.KeyPath = c.ClientCertKeyPath
 	}
-	c.ClientCertPath = ""
-	c.ClientCertKeyPath = ""
+	return true
+}
+
+// syncLegacyClientCertFields mirrors the IDP mTLS paths into the deprecated flat fields so a
+// downgraded client can still read the config.
+func (c *Config) syncLegacyClientCertFields() bool {
+	if c.ClientCertPath == c.IDPClientCert.CertPath && c.ClientCertKeyPath == c.IDPClientCert.KeyPath {
+		return false
+	}
+
+	c.ClientCertPath = c.IDPClientCert.CertPath
+	c.ClientCertKeyPath = c.IDPClientCert.KeyPath
 	return true
 }
 
 // applyMTLSCertKeyPair updates the cert/key paths on config from the given input values,
 // resets and reloads the cached TLS certificate pair.
-// Both paths must either both be set or both be empty; a mismatch is returned as an error.
+// If only CertPath is set, it is used for both the certificate and private key so a combined
+// PEM file works without duplicating the path in the config.
 // It returns whether any field was updated and any error encountered.
 func applyMTLSCertKeyPair(config *MTLSConfig, input MTLSConfig) (updated bool, err error) {
 	if input.KeyPath != "" {
@@ -51,11 +67,16 @@ func applyMTLSCertKeyPair(config *MTLSConfig, input MTLSConfig) (updated bool, e
 
 	// reset cached pair before reloading
 	config.KeyPair = nil
-	if (config.CertPath == "") != (config.KeyPath == "") {
-		return updated, fmt.Errorf("both CertPath and KeyPath must be set together")
+	if config.CertPath == "" && config.KeyPath != "" {
+		return updated, fmt.Errorf("CertPath must be set when KeyPath is configured")
 	}
 	if config.CertPath != "" {
-		cert, err := tls.LoadX509KeyPair(config.CertPath, config.KeyPath)
+		keyPath := config.KeyPath
+		if keyPath == "" {
+			keyPath = config.CertPath
+		}
+
+		cert, err := tls.LoadX509KeyPair(config.CertPath, keyPath)
 		if err != nil {
 			return updated, fmt.Errorf("failed to load mTLS cert/key pair: %w", err)
 		}

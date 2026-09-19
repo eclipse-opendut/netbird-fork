@@ -3,6 +3,7 @@
 package client
 
 import (
+	"crypto/tls"
 	"os"
 	"testing"
 
@@ -98,4 +99,27 @@ func TestStickyFallbackAfterDatagramTooLarge(t *testing.T) {
 
 	// The reconnect now sticks to WebSocket.
 	assert.Equal(t, []string{"ws"}, protocols(c.getDialers(transportModeFromEnv())))
+}
+
+func TestGetDialersWithClientCertKeepsQUIC(t *testing.T) {
+	t.Setenv(EnvRelayTransport, string(TransportModeAuto))
+
+	clientCert := &tls.Certificate{}
+	c := &Client{
+		log:           log.WithField("test", t.Name()),
+		connectionURL: "rels://relay.example:443",
+		mtu:           iface.DefaultMTU,
+		clientCert:    clientCert,
+	}
+
+	dialers := c.getDialers(transportModeFromEnv())
+	assert.Equal(t, []string{"quic", "ws"}, protocols(dialers))
+
+	quicDialer, ok := dialers[0].(quic.Dialer)
+	assert.True(t, ok, "auto transport must still try QUIC first when mTLS is configured")
+	assert.Same(t, clientCert, quicDialer.ClientCert, "QUIC dialer must receive the configured client certificate")
+
+	wsDialer, ok := dialers[1].(ws.Dialer)
+	assert.True(t, ok, "WebSocket dialer must remain available as fallback when mTLS is configured")
+	assert.Same(t, clientCert, wsDialer.ClientCert, "WebSocket dialer must receive the configured client certificate")
 }

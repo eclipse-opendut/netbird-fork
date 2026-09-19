@@ -2,6 +2,7 @@ package quic
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -17,6 +18,7 @@ import (
 )
 
 type Dialer struct {
+	ClientCert *tls.Certificate
 }
 
 func (d Dialer) Protocol() string {
@@ -37,6 +39,9 @@ func (d Dialer) Dial(ctx context.Context, address, serverName string) (net.Conn,
 
 	// Get the base TLS config
 	tlsClientConfig := quictls.ClientQUICTLSConfig()
+	if d.ClientCert != nil {
+		tlsClientConfig.Certificates = []tls.Certificate{*d.ClientCert}
+	}
 
 	switch {
 	case serverName != "" && net.ParseIP(serverName) == nil:

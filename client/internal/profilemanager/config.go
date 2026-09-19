@@ -181,10 +181,10 @@ type Config struct {
 	// DNSRouteInterval is the interval in which the DNS routes are updated
 	DNSRouteInterval time.Duration
 	// IDPClientCert holds the mTLS cert/key paths for OAuth PKCE Authorization Flow with the identity provider (SSO).
-	IDPClientCert MTLSConfig
+	IDPClientCert MTLSConfig `json:",omitzero"`
 
 	// MgmtClientCert holds the mTLS cert/key paths for connecting to management, signal, and relay backends.
-	MgmtClientCert MTLSConfig
+	MgmtClientCert MTLSConfig `json:",omitzero"`
 
 	// Deprecated: use IDPClientCert.CertPath instead. Kept for reading legacy config files.
 	ClientCertPath string `json:",omitempty"`
@@ -696,6 +696,9 @@ func (config *Config) apply(input ConfigInput) (updated bool, err error) {
 		return updated, err
 	}
 	updated = updated || idpUpdated
+	if config.syncLegacyClientCertFields() {
+		updated = true
+	}
 
 	mgmtUpdated, err := applyMTLSCertKeyPair(&config.MgmtClientCert, input.MgmtClientCert)
 	if err != nil {

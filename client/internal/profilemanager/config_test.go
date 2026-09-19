@@ -2,12 +2,20 @@ package profilemanager
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"math/big"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -410,4 +418,193 @@ func TestUpdateOldManagementURL(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMTLSConfigSerializationAndLoading(t *testing.T) {
+	type writtenConfig struct {
+		IDPClientCert  map[string]any
+		MgmtClientCert map[string]any
+		ClientCertPath string
+	}
+
+	tests := []struct {
+		name       string
+		input      ConfigInput
+		wantIDP    bool
+		wantMgmt   bool
+		wantLegacy bool
+		wantErr    string
+	}{
+		{
+			name: "empty mtls config is omitted",
+			input: ConfigInput{
+				ManagementURL: DefaultManagementURL,
+			},
+		},
+		{
+			name: "combined pem works with cert path only",
+			input: ConfigInput{
+				ManagementURL: DefaultManagementURL,
+			},
+			wantIDP:    true,
+			wantLegacy: true,
+		},
+		{
+			name: "invalid backend pair returns error",
+			input: ConfigInput{
+				ManagementURL: DefaultManagementURL,
+			},
+			wantErr: "failed to load mTLS cert/key pair",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			configPath := filepath.Join(tempDir, "config.json")
+
+			switch tt.name {
+			case "combined pem works with cert path only":
+				combinedPEMPath := writeCombinedTestCertificatePair(t, tempDir)
+				tt.input.IDPClientCert = MTLSConfig{CertPath: combinedPEMPath}
+			case "invalid backend pair returns error":
+				certPath, keyPath := writeInvalidCertificatePair(t, tempDir)
+				tt.input.MgmtClientCert = MTLSConfig{CertPath: certPath, KeyPath: keyPath}
+			}
+
+			cfg, err := UpdateOrCreateConfig(ConfigInput{
+				ManagementURL:  tt.input.ManagementURL,
+				ConfigPath:     configPath,
+				IDPClientCert:  tt.input.IDPClientCert,
+				MgmtClientCert: tt.input.MgmtClientCert,
+			})
+			if tt.wantErr != "" {
+				require.ErrorContains(t, err, tt.wantErr)
+				return
+			}
+
+			require.NoError(t, err)
+			require.NotNil(t, cfg)
+
+			content, err := os.ReadFile(configPath)
+			require.NoError(t, err)
+
+			var written writtenConfig
+			require.NoError(t, json.Unmarshal(content, &written))
+			assert.Equal(t, tt.wantIDP, len(written.IDPClientCert) > 0, "IDPClientCert presence should match expectation")
+			assert.Equal(t, tt.wantMgmt, len(written.MgmtClientCert) > 0, "MgmtClientCert presence should match expectation")
+			assert.Equal(t, tt.wantLegacy, written.ClientCertPath != "", "legacy ClientCertPath presence should match expectation")
+
+			if tt.wantIDP {
+				require.NotNil(t, cfg.IDPClientCert.KeyPair, "IDP client certificate must be loaded")
+				assert.Empty(t, cfg.IDPClientCert.KeyPath, "combined PEM path should not be duplicated into KeyPath")
+			}
+		})
+	}
+}
+
+func TestMigrateLegacyClientCertFieldsKeepsDowngradeFields(t *testing.T) {
+	tempDir := t.TempDir()
+	combinedPEMPath := writeCombinedTestCertificatePair(t, tempDir)
+	configPath := filepath.Join(tempDir, "config.json")
+
+	cfg, err := UpdateOrCreateConfig(ConfigInput{
+		ManagementURL: DefaultManagementURL,
+		ConfigPath:    configPath,
+	})
+	require.NoError(t, err)
+
+	cfg.ClientCertPath = combinedPEMPath
+	cfg.ClientCertKeyPath = combinedPEMPath
+	require.NoError(t, WriteOutConfig(configPath, cfg))
+
+	loadedCfg, err := ReadConfig(configPath)
+	require.NoError(t, err)
+	require.NotNil(t, loadedCfg.IDPClientCert.KeyPair, "migrated IDP certificate must be loaded")
+	assert.Equal(t, combinedPEMPath, loadedCfg.IDPClientCert.CertPath, "legacy cert path should migrate into IDPClientCert")
+	assert.Equal(t, combinedPEMPath, loadedCfg.ClientCertPath, "legacy cert path should stay populated for downgrade safety")
+	assert.Equal(t, combinedPEMPath, loadedCfg.ClientCertKeyPath, "legacy key path should stay populated for downgrade safety")
+}
+
+func TestUpdateOldManagementURLUsesMgmtClientCert(t *testing.T) {
+	tempDir := t.TempDir()
+	certPath, keyPath := writeTestCertificatePairSplit(t, tempDir)
+	configPath := filepath.Join(tempDir, "config.json")
+
+	cfg, err := UpdateOrCreateConfig(ConfigInput{
+		ManagementURL: oldDefaultManagementURL,
+		ConfigPath:    configPath,
+		MgmtClientCert: MTLSConfig{
+			CertPath: certPath,
+			KeyPath:  keyPath,
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, cfg.MgmtClientCert.KeyPair, "management client certificate must be loaded")
+
+	origProber := newMgmProber
+	newMgmProber = func(_ context.Context, _ string, _ wgtypes.Key, _ bool, clientCert *tls.Certificate) (mgmProber, error) {
+		require.Same(t, cfg.MgmtClientCert.KeyPair, clientCert, "management probe must receive the loaded client certificate")
+		return &mockMgmProber{}, nil
+	}
+	t.Cleanup(func() { newMgmProber = origProber })
+
+	_, err = UpdateOldManagementURL(context.Background(), cfg, configPath)
+	require.NoError(t, err)
+}
+
+func writeCombinedTestCertificatePair(t *testing.T, dir string) string {
+	t.Helper()
+
+	certPEM, keyPEM := generateTestCertificatePair(t)
+	combinedPath := filepath.Join(dir, "client.pem")
+	require.NoError(t, os.WriteFile(combinedPath, append(certPEM, keyPEM...), 0o600))
+	return combinedPath
+}
+
+func writeTestCertificatePairSplit(t *testing.T, dir string) (string, string) {
+	t.Helper()
+
+	certPEM, keyPEM := generateTestCertificatePair(t)
+	certPath := filepath.Join(dir, "client.crt")
+	keyPath := filepath.Join(dir, "client.key")
+	require.NoError(t, os.WriteFile(certPath, certPEM, 0o600))
+	require.NoError(t, os.WriteFile(keyPath, keyPEM, 0o600))
+	return certPath, keyPath
+}
+
+func writeInvalidCertificatePair(t *testing.T, dir string) (string, string) {
+	t.Helper()
+
+	certPath := filepath.Join(dir, "broken.crt")
+	keyPath := filepath.Join(dir, "broken.key")
+	require.NoError(t, os.WriteFile(certPath, []byte("not-a-cert"), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, []byte("not-a-key"), 0o600))
+	return certPath, keyPath
+}
+
+func generateTestCertificatePair(t *testing.T) ([]byte, []byte) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "netbird-client",
+		},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		BasicConstraintsValid: true,
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(privateKey)})
+	return certPEM, keyPEM
 }

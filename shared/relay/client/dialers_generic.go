@@ -29,11 +29,7 @@ func (c *Client) getDialers(mode TransportMode) []dialer.DialeFn {
 // prefer modes the first entry is tried before falling back to the second.
 func (c *Client) baseDialers(mode TransportMode) []dialer.DialeFn {
 	wsDialer := ws.Dialer{ClientCert: c.clientCert}
-
-	if c.clientCert != nil {
-		c.log.Infof("client certificate configured, using WebSocket relay transport")
-		return []dialer.DialeFn{wsDialer}
-	}
+	quicDialer := quic.Dialer{ClientCert: c.clientCert}
 
 	switch mode {
 	case TransportModeWS:
@@ -41,12 +37,12 @@ func (c *Client) baseDialers(mode TransportMode) []dialer.DialeFn {
 		return []dialer.DialeFn{wsDialer}
 	case TransportModeQUIC:
 		c.log.Infof("%s=quic, using QUIC transport", EnvRelayTransport)
-		return []dialer.DialeFn{quic.Dialer{}}
+		return []dialer.DialeFn{quicDialer}
 	}
 
-	all := []dialer.DialeFn{quic.Dialer{}, wsDialer}
+	all := []dialer.DialeFn{quicDialer, wsDialer}
 	if mode == TransportModePreferWS {
-		all = []dialer.DialeFn{wsDialer, quic.Dialer{}}
+		all = []dialer.DialeFn{wsDialer, quicDialer}
 	}
 
 	if c.mtu > 0 && c.mtu > iface.DefaultMTU {
